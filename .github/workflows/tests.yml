@@ -1,0 +1,37 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.9', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install . pytest
+      - run: python -m pytest -q
+      - run: rulea check examples/documents.rulea
+      - run: rulea test examples/documents.rulea examples/documents.cases.json
+  distributions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Validate isolated wheel and sdist installs
+        run: |
+          for distribution in "$GITHUB_WORKSPACE"/dist/*; do
+            python -m venv --clear /tmp/rulea-check
+            /tmp/rulea-check/bin/pip install "$distribution"
+            cd /tmp
+            /tmp/rulea-check/bin/rulea test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
+            /tmp/rulea-check/bin/python "$GITHUB_WORKSPACE/examples/run_example.py"
+            cd "$GITHUB_WORKSPACE"
+          done
