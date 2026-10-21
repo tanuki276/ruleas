@@ -19,7 +19,7 @@ export RULEAS_COOKIE_SECURE=false
 ruleas serve --host 127.0.0.1 --port 8000
 ```
 
-`http://127.0.0.1:8000/` が管理画面、`/docs` が OpenAPI です。ユーザーのパスワードは対話入力（12文字以上）。本番は HTTPS リバースプロキシ配下で起動し、SECRET_KEY は永続的な秘密値として保持してください。`init-db` は新規スキーマ用の冪等な初期化です。将来のスキーマ変更には別途マイグレーションが必要です。
+`http://127.0.0.1:8000/` が管理画面、`/docs` が OpenAPI です。ユーザーのパスワードは対話入力（12文字以上）。本番は HTTPS リバースプロキシ配下で起動し、SECRET_KEY は永続的な秘密値として保持してください。`init-db` と `migrate` は Alembic の最新 revision まで適用します。
 
 ## 保存と権限
 
@@ -73,3 +73,40 @@ python -m build
 ```
 
 サーバーテストは隔離された SQLite を使用します。本番向け PostgreSQL テストは CI の PostgreSQL サービスで実施します。管理画面はルール編集、有効無効、履歴復元、JSON context テスト、Decision / trace 表示、キーとユーザーの作成、監査閲覧を提供します。テスト実行は保存済みソースを対象にします。
+
+## DB migration
+
+スキーマは Alembic で管理します。`0001` が公開時の5テーブル、`0002` がログイン制限カウンターです。
+
+```sh
+# 新規 DB / Alembic 管理済み DB
+ruleas migrate
+# 旧 create_all() 版 DB: 必ずバックアップ後に実行
+ruleas stamp-initial
+```
+
+`stamp-initial` は旧スキーマと revision 0001 の一致を検証し、既存データを保持して 0001 を stamp し、0002 以降を適用します。不一致や管理済み DB への stamp は拒否します。既存 DB を無条件で stamp しません。migration は起動前に1プロセスで実行してください。
+
+## 負荷と入力上限
+
+- 判定・GET は通常の SELECT、更新・削除・rollback のみ SELECT FOR UPDATE を使用します。
+- HTTP body は実受信量で 1 MiB まで。Content-Length がなくても適用し、超過時は 413。
+- context は UTF-8 JSON 表現で 64 KiB、深さ32、4096ノードまで。超過は 422。
+- source は UTF-8 で256 KiB、タグは32個まで、各64 UTF-8バイトまで。
+- エンジンはプロセス内 LRU に最大32件、(policy ID, DB version) 単位で保持します。更新と rollback は新しい version のエンジンを使用します。評価中にキャッシュロックは保持しません。複数ワーカーは独立したキャッシュを持ちます。
+- ログインは DB 共有の固定60秒窓で、接続元 IP ごと30回・ユーザー名ごと10回まで。成功・失敗を両方計上し、超過時はパスワード検証前に 429 と Retry-After を返します。境界では連続する2窓分の試行が可能です。DB 障害時には制限を迂回せず失敗します。
+- 接続元は ASGI の client IP を使います。プロキシ運用では Uvicorn の信頼する転送元を明示してください。未検証の X-Forwarded-For をアプリで直接信用しません。
+
+## main の保護
+
+CI の `required-tests` は全 Python バージョン、配布物、PostgreSQL テストのすべての成功を要求します。ワークフローを追加するだけでは GitHub のブランチ保護は有効になりません。管理権限を持つ GitHub CLI セッションで次を実行すると、最新 main への追従と `required-tests` 成功を必須にし、管理者にも適用、force push と削除を禁止します。
+
+```sh
+sh scripts/protect-main.sh
+```
+
+設定 payload は `.github/branch-protection.json` です。既存の保護を置き換える操作なので内容を確認してください。
+
+## License
+
+Ruleas is licensed under the Apache License 2.0. See `LICENSE` for the full license text. Rulea is also licensed under Apache-2.0.

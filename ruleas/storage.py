@@ -59,3 +59,10 @@ def connect(url):
     kwargs = {'connect_args': {'check_same_thread': False}} if url.startswith('sqlite') else {}
     engine = create_engine(url, pool_pre_ping=True, **kwargs)
     return engine, sessionmaker(bind=engine, expire_on_commit=False)
+
+
+class LoginBucket(Base):
+    __tablename__ = 'login_buckets'
+    key = Column(String(64), primary_key=True)
+    window = Column(Integer, nullable=False)
+    count = Column(Integer, nullable=False)

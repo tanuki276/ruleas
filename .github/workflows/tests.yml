@@ -58,3 +58,18 @@ jobs:
           python-version: '3.12'
       - run: pip install '.[test]'
       - run: pytest -q tests/test_postgres.py
+
+  required-tests:
+    if: ${{ always() }}
+    needs: [test, distributions, postgres]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all test jobs
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PYTHON'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          assert all(job['result'] == 'success' for job in results.values()), results
+          PYTHON

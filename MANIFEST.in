@@ -13,3 +13,6 @@ exclude __pycache__/
 
 include compose.yaml
 recursive-include ruleas *.html
+
+recursive-include scripts *.sh
+include .github/branch-protection.json

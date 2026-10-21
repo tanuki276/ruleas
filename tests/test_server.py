@@ -9,7 +9,8 @@ SOURCE = 'namespace demo\nversion 1\nrule adult:\n    when: age >= 18\n    reaso
 def client(tmp_path):
     url = 'sqlite:///' + str(tmp_path / 'test.db')
     engine, sessions = connect(url)
-    Base.metadata.create_all(engine)
+    from ruleas.migrate import migrate
+    migrate(engine)
     with sessions() as db:
         for name, role in [('admin','admin'), ('viewer','viewer')]:
             db.add(User(username=name, role=role, password=hash_password('a-strong-password')))
@@ -72,3 +73,82 @@ def test_auth_and_validation(client):
     assert c.post('/v1/rules', json={'name':'x','source':SOURCE}).status_code == 403
     assert c.get('/v1/audit-logs').status_code == 403
     assert c.get('/').status_code == 200
+
+
+def test_login_limits(client, monkeypatch):
+    c, sessions = client
+    import ruleas.server as server
+    from ruleas.storage import LoginBucket
+    monkeypatch.setattr(server.time, 'time', lambda: 6000)
+    calls = []
+    original = server.verify_password
+    monkeypatch.setattr(server, 'verify_password', lambda *args: (calls.append(1), original(*args))[1])
+    for _ in range(10):
+        assert c.post('/v1/login', json={'username':'admin','password':'wrong'}).status_code == 401
+    r = c.post('/v1/login', json={'username':'admin','password':'a-strong-password'})
+    assert r.status_code == 429 and r.headers['Retry-After'] == '60'
+    assert len(calls) == 10  # rejection precedes expensive hashing
+    # Different names cannot evade the IP budget.
+    for n in range(19):
+        assert c.post('/v1/login', json={'username':str(n),'password':'wrong'}).status_code == 401
+    assert c.post('/v1/login', json={'username':'other','password':'wrong'}).status_code == 429
+    monkeypatch.setattr(server.time, 'time', lambda: 6060)
+    login(c)
+    # Another app/worker uses the same persisted counters.
+    with sessions() as db:
+        assert db.query(LoginBucket).count() > 0
+
+
+def test_input_bounds_and_cache(client, monkeypatch):
+    c, _ = client
+    login(c)
+    p = c.post('/v1/rules', json={'name':'cache','source':SOURCE}).json()
+    pid = p['id']
+    assert c.post('/v1/rules',json={'name':'tags','source':SOURCE,'tags':['x']*33}).status_code == 422
+    assert c.post('/v1/rules',json={'name':'tags','source':SOURCE,'tags':['界'*22]}).status_code == 422
+    assert c.post('/v1/rules',json={'name':'bytes','source':'#'+'界'*90000}).status_code == 422
+    assert c.post('/v1/decide',content=b'x'*(1048576+1)).status_code == 413
+    body = dict(policy_id=pid, rule='demo.adult', context={'age':20})
+    assert c.post('/v1/decide',json=dict(body,context={'x':'a'*65536})).status_code == 422
+    assert c.post('/v1/decide',json=dict(body,context={'x':[1]*4096})).status_code == 422
+    deep = {}
+    for _ in range(34):
+        deep = {'x':deep}
+    assert c.post('/v1/decide',json=dict(body,context=deep)).status_code == 422
+    from rulea import RuleEngine
+    original = RuleEngine.from_string
+    compiled = []
+    def compile_policy(source):
+        compiled.append(source)
+        return original(source)
+    monkeypatch.setattr(RuleEngine,'from_string',compile_policy)
+    for _ in range(3):
+        assert c.post('/v1/decide',json=body).json()['result'] == 'ALLOW'
+    assert len(compiled) == 1
+    updated = dict(name='cache',source=SOURCE.replace('18','21'),expected_version=1)
+    assert c.put(f'/v1/rules/{pid}',json=updated).status_code == 200
+    assert c.post('/v1/decide',json=body).json()['result'] == 'DENY'
+    assert c.post(f'/v1/rules/{pid}/rollback/1').status_code == 200
+    assert c.post('/v1/decide',json=body).json()['result'] == 'ALLOW'
+
+
+def test_streamed_body_limit(client):
+    c, _ = client
+    # No Content-Length; enforce the actual bytes too.
+    response = c.post('/v1/login', content=(b'x'*400000 for _ in range(3)))
+    assert response.status_code == 413
+
+
+def test_json_decoder_depth_limit(client):
+    c, _ = client
+    r = c.post('/v1/decide',content=b'{"x":'*2000+b'0'+b'}'*2000,headers={'Content-Type':'application/json'})
+    assert r.status_code == 422
+
+
+def test_cache_evicts():
+    from ruleas.limits import EngineCache
+    from types import SimpleNamespace
+    cache = EngineCache(capacity=2)
+    for version in range(4):
+        cache.get(SimpleNamespace(id=1, version=version, source=SOURCE))
+    assert list(cache.entries) == [(1,2),(1,3)]
