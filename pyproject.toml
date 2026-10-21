@@ -3,9 +3,9 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rulea"
-version = "2.0.0"
-description = "Embeddable, safe and explainable decision language for Python"
+name = "ruleas"
+version = "1.0.0"
+description = "Ruleas: embeddable, safe and explainable decision language for Python"
 authors = [
   { name="tanuki276" }
 ]
@@ -18,10 +18,11 @@ classifiers = [
 ]
 
 [project.scripts]
+ruleas = "rulea.cli:main"
 rulea = "rulea.cli:main"
 
 [project.urls]
-Repository = "https://github.com/tanuki276/rulea"
+Repository = "https://github.com/tanuki276/ruleas"
 
 [tool.setuptools.packages.find]
 include = ["rulea*"]
