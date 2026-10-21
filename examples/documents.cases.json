@@ -1,0 +1,5 @@
+[
+  {"rule":"documents.edit","context":{"user":{"id":100},"resource":{"owner":100,"locked":false,"status":"draft"}},"result":"ALLOW"},
+  {"rule":"documents.edit","context":{"user":{"id":100},"resource":{"owner":100,"locked":true,"status":"draft"}},"result":"DENY"},
+  {"rule":"documents.publish","context":{"user":{"id":100},"resource":{"owner":100,"locked":false,"status":"draft"}},"result":"DENY"}
+]
