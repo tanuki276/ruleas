@@ -1,5 +1,5 @@
 from pathlib import Path
-from rulea import RuleEngine
+from ruleas import RuleEngine
 
 engine = RuleEngine(Path(__file__).with_name("documents.rulea"))
 decision = engine.decide("documents.edit", {
