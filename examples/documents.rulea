@@ -1,0 +1,30 @@
+version 42
+namespace documents
+
+schema:
+    user.id: int
+    resource.owner: int
+    resource.locked: bool
+    resource.status: string
+
+rule owner:
+    when: user.id == resource.owner
+    reason: "Only the owner may edit"
+
+rule editable:
+    when: matches("owner") and not resource.locked
+    reason: "Owner required and document must be unlocked"
+
+rule publish:
+    when: matches("editable") and resource.status == "reviewed"
+    reason: "Document must be editable and reviewed"
+
+rule locked:
+    when: resource.locked
+    effect: DENY
+    reason: "Document is locked"
+
+ruleset edit:
+    rules: locked, editable
+    strategy: deny_overrides
+    default: DENY
