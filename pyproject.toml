@@ -25,4 +25,4 @@ rulea = "rulea.cli:main"
 Repository = "https://github.com/tanuki276/ruleas"
 
 [tool.setuptools.packages.find]
-include = ["rulea*"]
+include = ["rulea*", "ruleas*"]
