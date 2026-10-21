@@ -1,4 +1,4 @@
-"""Development tools kept outside the decision interpreter."""
+"""Ruleas 1.0.0 development tools kept outside the decision interpreter."""
 import argparse
 import json
 import sys
@@ -9,7 +9,7 @@ from .model import PolicyError, Result
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="ruleas 1.0 decision tools")
+    parser = argparse.ArgumentParser(description="Ruleas 1.0.0 decision tools")
     sub = parser.add_subparsers(dest="command", required=True)
     for command in ("check", "lint", "explain", "test", "benchmark", "fmt"):
         p = sub.add_parser(command)
