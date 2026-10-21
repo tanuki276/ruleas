@@ -9,7 +9,7 @@ from .model import PolicyError, Result
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="rulea v2 decision tools")
+    parser = argparse.ArgumentParser(description="ruleas 1.0 decision tools")
     sub = parser.add_subparsers(dest="command", required=True)
     for command in ("check", "lint", "explain", "test", "benchmark", "fmt"):
         p = sub.add_parser(command)
@@ -30,7 +30,6 @@ def main(argv=None):
             print("Policy valid: " + engine.policy_hash)
             return 0
         if args.command == "fmt":
-            # Conservative formatting preserves expressions, strings and declaration order.
             source = Path(args.policy).read_text(encoding="utf-8")
             formatted = "\n".join(("    " + line.strip() if line[:1].isspace() and line.strip() else line.rstrip()) for line in source.splitlines()).rstrip() + "\n"
             RuleEngine.from_string(formatted)
@@ -66,7 +65,7 @@ def main(argv=None):
         print(json.dumps({"iterations": args.iterations, "seconds": time.perf_counter() - start}))
         return 0
     except (PolicyError, OSError, ValueError, TypeError, KeyError) as exc:
-        print("rulea: " + str(exc), file=sys.stderr)
+        print("ruleas: " + str(exc), file=sys.stderr)
         return 2
 
 
