@@ -74,7 +74,6 @@ python -m build
 
 サーバーテストは隔離された SQLite を使用します。本番向け PostgreSQL テストは CI の PostgreSQL サービスで実施します。管理画面はルール編集、有効無効、履歴復元、JSON context テスト、Decision / trace 表示、キーとユーザーの作成、監査閲覧を提供します。テスト実行は保存済みソースを対象にします。
 
-
 ## DB migration
 
 スキーマは Alembic で管理します。`0001` が公開時の5テーブル、`0002` がログイン制限カウンターです。
@@ -108,6 +107,6 @@ sh scripts/protect-main.sh
 
 設定 payload は `.github/branch-protection.json` です。既存の保護を置き換える操作なので内容を確認してください。
 
-## LICENSE
+## License
 
-現在の LICENSE は `Copyright (c) 2025 soln`、All rights reserved、および著作権者の事前許可を要求する内容です。この変更では LICENSE と著作権者名を変更していません。公開リリース前に、権利者が希望する利用許諾と正しい著作権表記を確認してください。
+Ruleas is licensed under the Apache License 2.0. See `LICENSE` for the full license text. Rulea is also licensed under Apache-2.0.
