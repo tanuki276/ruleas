@@ -1,0 +1,25 @@
+# example.rulea
+
+rule can_view:
+    when: user["is_authenticated"]
+    reason: "Only logged-in users can view"
+    description: "ログインしていないユーザーは閲覧できません"
+    tags: view, auth
+    priority: 1
+    enabled: true
+
+rule can_edit:
+    when: user["username"] == resource["owner"] and resource["status"] != "locked"
+    reason: "Only the owner can edit if not locked"
+    description: "所有者かつロックされていない場合に編集可能"
+    tags: edit, ownership
+    priority: 5
+    enabled: true
+
+rule can_delete:
+    when: role == "admin" or (user["username"] == resource["owner"] and resource["status"] != "archived")
+    reason: "Only admin or owner (if not archived) can delete"
+    description: "削除には管理者、または未アーカイブの所有者である必要があります"
+    tags: delete, admin
+    priority: 10
+    enabled: true
