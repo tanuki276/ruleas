@@ -1,118 +1,75 @@
 # Ruleas 1.0.0
 
-**Readable rules. Predictable decisions.**
+[rulea](https://github.com/tanuki276/rulea) の評価エンジンに FastAPI / Uvicorn、PostgreSQL、認証付き管理画面を追加したサーバーです。rulea 本体のコードは変更していません。既存の `ruleas check` / `ruleas test` も利用できます。
 
-Ruleas is an embeddable, safe and explainable decision language for Python. Applications collect facts; Ruleas returns a decision. Applications perform any resulting actions.
+## 起動
 
-Ruleas 1.0.0 is based on the Rulea engine and keeps the existing `.rulea` policy format. The `rulea` Python package and CLI remain available as compatibility aliases, while `ruleas` is the primary public name.
-
-Requires Python 3.9+.
+Python 3.9 以降。PostgreSQL を用意し、次の手順で初期化してください。
 
 ```sh
-pip install ruleas
+pip install .
+export POSTGRES_PASSWORD='replace-with-a-long-random-password'
+docker compose up -d db
+export RULEAS_DATABASE_URL="postgresql+psycopg://ruleas:${POSTGRES_PASSWORD}@localhost:5432/ruleas"
+export RULEAS_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+ruleas init-db
+ruleas create-user admin --role admin
+# ローカル HTTP 開発時のみ。HTTPS 運用では true（既定値）を使用。
+export RULEAS_COOKIE_SECURE=false
+ruleas serve --host 127.0.0.1 --port 8000
 ```
 
-## Python API
+`http://127.0.0.1:8000/` が管理画面、`/docs` が OpenAPI です。ユーザーのパスワードは対話入力（12文字以上）。本番は HTTPS リバースプロキシ配下で起動し、SECRET_KEY は永続的な秘密値として保持してください。`init-db` は新規スキーマ用の冪等な初期化です。将来のスキーマ変更には別途マイグレーションが必要です。
 
-```python
-from ruleas import RuleEngine
+## 保存と権限
 
-engine = RuleEngine("examples/documents.rulea")
-decision = engine.decide("documents.edit", {
-    "user": {"id": 100},
-    "resource": {"owner": 100, "locked": False, "status": "draft"},
-})
+1件の「ルール」は `.rulea` 文書単位です。文書内に複数の rule / ruleset を記述できます。namespace はソースから取得し、ソース内の policy version と DB の連番 version は独立しています。タグ・有効無効・更新日時・ソース・履歴を保存します。削除は論理削除で、履歴と監査は保持し、rollback で復元できます。rollback 自体も新しいバージョンになります。import を使用する外部モジュールのアップロードには未対応です。
 
-if decision.allowed:
-    pass  # The host application performs the operation.
+管理者は編集、削除、復元、ユーザー作成、API キー管理、監査ログ閲覧が可能です。閲覧者はルール・履歴閲覧とテスト実行が可能です。API キーは作成した管理者の権限を継承し、一度だけ表示、DB には SHA-256 ハッシュのみを保存します。パスワードは salt 付き scrypt、管理画面は署名付き HttpOnly セッションと CSRF トークンを使用します。
 
-print(decision.to_dict())
+## API
+
+ログイン: `POST /v1/login` に `username` / `password`。管理画面の変更系リクエストには返された `csrf_token` を `X-CSRF-Token` ヘッダーで指定します。API クライアントは `Authorization: Bearer rs_...` を使用します。
+
+| メソッド | パス | 内容 |
+|---|---|---|
+| GET | `/health` | DB 接続を含むヘルスチェック |
+| POST | `/v1/decide` | Decision をそのまま返す |
+| POST | `/v1/check` | allowed / reason / decision |
+| GET, POST | `/v1/rules` | 一覧・作成 |
+| GET, PUT, DELETE | `/v1/rules/{id}` | 取得・更新・削除 |
+| GET | `/v1/rules/{id}/source` | .rulea ダウンロード |
+| GET | `/v1/rules/{id}/versions` | 履歴 |
+| POST | `/v1/rules/{id}/rollback/{version}` | 復元 |
+| POST | `/v1/users` | ユーザー作成（role: admin / viewer） |
+| GET, POST | `/v1/api-keys` | キー一覧・発行 |
+| DELETE | `/v1/api-keys/{id}` | キー失効 |
+| GET | `/v1/audit-logs?limit=100` | 最新監査ログ（最大1000件） |
+| GET, POST | `/v1/me`, `/v1/logout` | セッション情報・ログアウト |
+
+ルール作成例:
+
+```json
+{"name":"access","source":"namespace access\nrule adult:\n    when: age >= 18\n    reason: \"Adults only\"\n","enabled":true,"tags":["auth"]}
 ```
 
-## Policy language
-
-```text
-version 42
-namespace documents
-
-schema:
-    user.id: int
-    resource.owner: int
-    resource.locked: bool
-
-rule owner:
-    when: user.id == resource.owner
-    reason: "Only the owner may edit"
-
-rule editable:
-    when: matches("owner") and not resource.locked
-    reason: "Owner required and document must be unlocked"
-
-rule locked:
-    when: resource.locked
-    effect: DENY
-    reason: "Document is locked"
-
-ruleset edit:
-    rules: locked, editable
-    strategy: deny_overrides
-    default: DENY
-```
-
-Rule conditions support fact paths, JSON scalar values, list/tuple literals, boolean operators, comparisons, membership checks and `matches("rule")` composition. Arbitrary Python calls, imports, assignment, arithmetic and private attribute access are rejected.
-
-## Decisions
-
-Ruleas returns one of four results:
-
-| Result | Meaning |
-| --- | --- |
-| `ALLOW` | Permission granted |
-| `DENY` | Permission denied |
-| `NOT_APPLICABLE` | Unknown/disabled rule or unmatched ruleset member |
-| `ERROR` | Invalid facts or evaluation failure |
-
-Each decision includes the rule name, reason, policy version, policy hash, engine version, trace and nested child decisions.
-
-## CLI
+更新時には上記に `expected_version`（現在の DB version）を追加します。競合は HTTP 409。実行例:
 
 ```sh
-ruleas check examples/documents.rulea
-ruleas lint examples/documents.rulea
-ruleas test examples/documents.rulea examples/documents.cases.json
-ruleas explain examples/documents.rulea documents.edit --context '{"user":{"id":100},"resource":{"owner":100,"locked":false,"status":"draft"}}'
-ruleas fmt examples/documents.rulea --write
-ruleas benchmark examples/access.rulea can_view --context '{"user":{"is_authenticated":true}}'
+curl http://127.0.0.1:8000/v1/decide \
+  -H "Authorization: Bearer $RULEAS_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"policy_id":1,"rule":"access.adult","context":{"age":20}}'
 ```
 
-`python -m ruleas` is also supported. The legacy `rulea` command remains available for compatibility.
+`ALLOW / DENY / NOT_APPLICABLE / ERROR`、reason、trace、子 Decision、policy hash、engine version を返します。無効文書は NOT_APPLICABLE。未知の rule の挙動も rulea に従います。実行結果は actor・文書 ID・rule 名・日時・結果・hash・engine version とともに DB へ保存され、監査保存に失敗した場合はリクエストも失敗します。context やパスワード、キーの平文は監査に保存しません。
 
-## Public API contract (1.x)
-
-The stable top-level Ruleas exports are `RuleEngine`, `Decision`, `Result`, `Trace`, `PolicyError`, and `__version__`.
-
-Supported engine interfaces are the path constructor, `RuleEngine.from_string`, `decide`, `check`, `policy_version`, and `policy_hash`.
-
-Ruleas 1.x keeps the decision engine deterministic: no clocks, randomness, environment variables, network access or external services are consulted during rule evaluation.
-
-## Development
+## 検証
 
 ```sh
-python -m pip install . pytest
-python -m pytest -q
+pip install '.[test]'
+pytest -q
+python -m build
 ```
 
-The test workflow validates Python 3.9, 3.12 and 3.13, builds wheel and source distributions, checks package metadata and tests the installed distribution through the `ruleas` CLI.
-
-## Release procedure
-
-The publishing workflow is `.github/workflows/python-publish.yml`, triggered by a published GitHub Release. The release tag must match `project.version`, so Ruleas 1.0.0 should use `1.0.0` or `v1.0.0`.
-
-Before publishing, configure the PyPI Trusted Publisher for:
-
-- owner: `tanuki276`
-- repository: `ruleas`
-- workflow: `python-publish.yml`
-- environment: `pypi`
-
-Repository: https://github.com/tanuki276/ruleas
+サーバーテストは隔離された SQLite を使用します。本番向け PostgreSQL テストは CI の PostgreSQL サービスで実施します。管理画面はルール編集、有効無効、履歴復元、JSON context テスト、Decision / trace 表示、キーとユーザーの作成、監査閲覧を提供します。テスト実行は保存済みソースを対象にします。

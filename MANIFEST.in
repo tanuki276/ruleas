@@ -10,3 +10,6 @@ recursive-include tests *.py
 
 exclude *.pyc
 exclude __pycache__/
+
+include compose.yaml
+recursive-include ruleas *.html

@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ruleas"
 version = "1.0.0"
-description = "Ruleas 1.0.0: embeddable, safe and explainable decision language for Python"
+description = "Ruleas: authenticated policy API and management server"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "sqlalchemy>=2.0,<3", "psycopg[binary]>=3.2,<4", "itsdangerous>=2.2,<3"]
 authors = [
   { name="tanuki276" }
 ]
@@ -26,3 +27,9 @@ Repository = "https://github.com/tanuki276/ruleas"
 
 [tool.setuptools.packages.find]
 include = ["rulea*", "ruleas*"]
+
+[tool.setuptools.package-data]
+ruleas = ["admin.html"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "httpx>=0.27", "build", "twine"]
