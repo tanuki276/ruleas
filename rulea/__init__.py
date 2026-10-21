@@ -1,4 +1,4 @@
-"""Stable 2.x API for decisions. Parsing and compilation are internal."""
+"""Compatibility API for Ruleas 1.x. Parsing and compilation are internal."""
 from .engine import RuleEngine
 from .model import Decision, Result, Trace, PolicyError, ENGINE_VERSION
 
