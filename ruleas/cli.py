@@ -5,7 +5,7 @@ import os
 import sys
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ('serve', 'init-db', 'create-user'):
+    if len(sys.argv) < 2 or sys.argv[1] not in ('serve', 'init-db', 'migrate', 'stamp-initial', 'create-user'):
         from rulea.cli import main as engine_main
         return engine_main()
     parser = argparse.ArgumentParser(prog='ruleas')
@@ -14,6 +14,8 @@ def main():
     serve.add_argument('--host', default='127.0.0.1')
     serve.add_argument('--port', type=int, default=8000)
     sub.add_parser('init-db')
+    sub.add_parser('migrate')
+    sub.add_parser('stamp-initial')
     user = sub.add_parser('create-user')
     user.add_argument('username')
     user.add_argument('--role', choices=['admin', 'viewer'], default='admin')
@@ -29,9 +31,10 @@ def main():
         parser.error('RULEAS_DATABASE_URL is required')
     engine, sessions = connect(url)
     try:
-        if args.command == 'init-db':
-            Base.metadata.create_all(engine)
-            print('Database initialized (schema version 1)')
+        if args.command in ('init-db', 'migrate', 'stamp-initial'):
+            from .migrate import migrate
+            migrate(engine, stamp_initial=args.command == 'stamp-initial')
+            print('Database migrated to head')
         else:
             password = getpass.getpass('Password (12+ characters): ')
             if password != getpass.getpass('Confirm password: '):
