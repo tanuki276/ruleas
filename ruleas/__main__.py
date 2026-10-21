@@ -1,4 +1,4 @@
 import sys
-from rulea.cli import main
+from .cli import main
 
 sys.exit(main())
