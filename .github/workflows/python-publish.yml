@@ -31,11 +31,11 @@ jobs:
       - run: python -m twine check dist/*
       - name: Install wheel in clean environment and run examples
         run: |
-          python -m venv /tmp/rulea-release
-          /tmp/rulea-release/bin/pip install dist/*.whl
+          python -m venv /tmp/ruleas-release
+          /tmp/ruleas-release/bin/pip install dist/*.whl
           cd /tmp
-          /tmp/rulea-release/bin/rulea test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
-          /tmp/rulea-release/bin/python "$GITHUB_WORKSPACE/examples/run_example.py"
+          /tmp/ruleas-release/bin/ruleas test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
+          /tmp/ruleas-release/bin/python "$GITHUB_WORKSPACE/examples/run_example.py"
       - uses: actions/upload-artifact@v4
         with:
           name: release-dists
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/rulea/
+      url: https://pypi.org/project/ruleas/
     permissions:
       id-token: write
     steps:
