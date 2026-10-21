@@ -13,8 +13,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install . pytest
       - run: python -m pytest -q
-      - run: rulea check examples/documents.rulea
-      - run: rulea test examples/documents.rulea examples/documents.cases.json
+      - run: ruleas check examples/documents.rulea
+      - run: ruleas test examples/documents.rulea examples/documents.cases.json
   distributions:
     runs-on: ubuntu-latest
     steps:
@@ -28,10 +28,10 @@ jobs:
       - name: Validate isolated wheel and sdist installs
         run: |
           for distribution in "$GITHUB_WORKSPACE"/dist/*; do
-            python -m venv --clear /tmp/rulea-check
-            /tmp/rulea-check/bin/pip install "$distribution"
+            python -m venv --clear /tmp/ruleas-check
+            /tmp/ruleas-check/bin/pip install "$distribution"
             cd /tmp
-            /tmp/rulea-check/bin/rulea test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
-            /tmp/rulea-check/bin/python "$GITHUB_WORKSPACE/examples/run_example.py"
+            /tmp/ruleas-check/bin/ruleas test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
+            /tmp/ruleas-check/bin/python "$GITHUB_WORKSPACE/examples/run_example.py"
             cd "$GITHUB_WORKSPACE"
           done
