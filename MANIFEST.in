@@ -4,6 +4,7 @@ include setup.py
 include pyproject.toml
 
 recursive-include rulea *.py
+recursive-include ruleas *.py
 recursive-include examples *.rulea *.json *.py
 recursive-include tests *.py
 
