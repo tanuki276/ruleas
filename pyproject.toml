@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ruleas"
 version = "1.0.0"
-description = "Ruleas: embeddable, safe and explainable decision language for Python"
+description = "Ruleas 1.0.0: embeddable, safe and explainable decision language for Python"
 authors = [
   { name="tanuki276" }
 ]
@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 [project.scripts]
-ruleas = "rulea.cli:main"
+ruleas = "ruleas.cli:main"
 rulea = "rulea.cli:main"
 
 [project.urls]
