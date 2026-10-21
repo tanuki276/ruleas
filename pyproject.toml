@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rulea"
+version = "2.0.0"
+description = "Embeddable, safe and explainable decision language for Python"
+authors = [
+  { name="tanuki276" }
+]
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+
+[project.scripts]
+rulea = "rulea.cli:main"
+
+[project.urls]
+Repository = "https://github.com/tanuki276/rulea"
+
+[tool.setuptools.packages.find]
+include = ["rulea*"]
