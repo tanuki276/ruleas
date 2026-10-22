@@ -34,7 +34,7 @@ replace a v1 production database or treat the legacy API as a v2 adapter.
   modules remain packaged for migration development; they are not the new server.
 
 The migration includes initial records for tests, simulations, audit, webhooks and
-jobs, but their presence is not a claim that their services or UI are implemented.
+jobs. Replay/shadow jobs and worker execution are implemented; webhook delivery and complete audit services remain pending.
 `decision_events` is range-partitioned with a default partition; monthly partition
 maintenance and retention are still pending. `activate_at` rejects early manual
 release, but there is no scheduler/automatic activation yet.
@@ -43,7 +43,7 @@ release, but there is no scheduler/automatic activation yet.
 
 Credential/session row contention, shared IP login limits, 401/403 semantics and
 relational tenant integrity are covered by [authentication/tenant hardening](docs-auth-tenant.md).
-Next implementation order: worker → simulation/replay → shadow → canary → UI.
+Worker, imported-input async replay, shadow, sticky canary and the initial SPA are now implemented. See [operations guide](docs-async-rollouts.md).
 
 ## Remaining stages
 
@@ -52,12 +52,12 @@ Next implementation order: worker → simulation/replay → shadow → canary �
 | A–C | Operational schema review and identity/project administration |
 | D | Suite management APIs/UI, richer abstract interpretation, schema autocomplete |
 | E | Approval rejection/admin APIs, idempotent release API, production policy gates |
-| F | Historical replay workers, filtering, persisted source/semantic/behavioral comparisons |
-| G | Shadow, deterministic sticky canary, guardrails, automatic rollback, scheduled workers |
+| F | Automatic production-traffic capture/export, large-scale streaming replay and richer filters |
+| G | Metric guardrails, automatic rollback and scheduled percentage ramps |
 | H | Complete audit context modes, transactional hash chain writer, explorer and monthly retention |
-| I | Lease/retry/recovery worker, asynchronous signed webhook delivery and dead-letter UI |
+| I | Asynchronous signed webhook delivery and webhook dead-letter UI |
 | J | Prometheus, OTel, structured logging and operational dashboards |
-| K | React/TypeScript/Vite/CodeMirror SPA with Japanese/English i18n |
+| K | Full Japanese/English form translation, administration/explorer views and editor autocomplete |
 | L | Remote CLI/GitOps, SDKs, portable export/import and templates |
 | M | v1 data transformation, legacy credentials/env aliases and v1 decision adapters |
 | N | Mutation/boundary/fuzz tests, supported counterfactuals, signed receipts and pinned dependencies |
@@ -74,6 +74,4 @@ lifecycle. They do **not** establish PostgreSQL concurrency/trigger correctness.
 `tests/v2/test_postgresql.py` requires `RULEASE_TEST_DATABASE_URL`; each test uses
 and drops a uniquely named temporary schema. Run against a test database only.
 
-The platform CI installs the pinned companion engine commit until engine 2.1 is
-published. Publish the engine first; platform release installations require that
-version from the package index. Neither distribution is published by this branch.
+The platform CI and release builds resolve the separately published engine from the package index. Console assets are built before wheel/sdist creation; Node.js is not required at runtime.

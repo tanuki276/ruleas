@@ -28,6 +28,8 @@ export RULEASE_SECRET_KEY='a-random-secret-of-at-least-32-bytes'
 rulease migrate
 rulease init --workspace team --project commerce --username owner
 rulease serve
+# In a second process, with the same database URL and secret:
+rulease worker
 ```
 
 `init` prompts for a password and creates development/staging/production
@@ -65,3 +67,9 @@ RULEASE_TEST_DATABASE_URL='postgresql+psycopg://.../test_db' \
 
 The PostgreSQL tests create/drop isolated schemas. Never use production database
 credentials for tests. Engine changes are reviewed separately in the rulea repo.
+
+## Async operations and console
+
+See [worker, replay, shadow, canary and SPA setup](docs-async-rollouts.md).
+Build the console with `npm ci --prefix frontend && npm run build --prefix frontend`
+before building from source. Published wheels include the console at `/admin/`.

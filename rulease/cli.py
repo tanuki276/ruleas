@@ -20,6 +20,8 @@ def main(argv=None):
             p.add_argument('rule')
             p.add_argument('--context', default='{}')
             p.add_argument('--trace', choices=['none', 'summary', 'full'], default='full')
+    worker = sub.add_parser('worker')
+    worker.add_argument('--once', action='store_true')
     sub.add_parser('migrate')
     sub.add_parser('doctor')
     init = sub.add_parser('init')
@@ -53,7 +55,18 @@ def main(argv=None):
         from .database import connect, migrate
         engine, sessions = connect(settings.database_url)
         try:
-            if args.command == 'doctor':
+            if args.command == 'worker':
+                import signal
+                from threading import Event
+                from .worker import run, run_once
+                if args.once:
+                    run_once(sessions, settings)
+                else:
+                    stop = Event()
+                    for signum in (signal.SIGINT, signal.SIGTERM):
+                        signal.signal(signum, lambda *_: stop.set())
+                    run(sessions, settings, stop)
+            elif args.command == 'doctor':
                 from sqlalchemy import text
                 with engine.connect() as connection:
                     connection.execute(text('SELECT version FROM rulease_migrations LIMIT 1'))
