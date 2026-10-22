@@ -104,10 +104,12 @@ def create_app(settings=None):
     app = FastAPI(title='Rulease', version='2.0.0-alpha.1', description='Immutable policy revision and release API')
     app.state.engine, app.state.sessions = engine, sessions
 
-    def secure_headers(response, request_id):
+    def secure_headers(response, request_id, admin=False):
         response.headers.update({'X-Request-ID': request_id, 'X-Content-Type-Options': 'nosniff',
             'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
             'Cache-Control': 'no-store'})
+        if admin:
+            response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         if settings.production:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         return response
@@ -124,7 +126,7 @@ def create_app(settings=None):
                                     status_code=413, media_type='application/problem+json', headers={'X-Request-ID': request_id}), request_id)
         request._body = bytes(data)
         response = await call_next(request)
-        return secure_headers(response, request_id)
+        return secure_headers(response, request_id, request.url.path.startswith('/admin/'))
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
@@ -388,7 +390,7 @@ def create_app(settings=None):
             raise Forbidden('Workspace does not match credential')
         return decide(session, workspace_id=workspace.id, service_account_id=account.id,
                       project_key=item.project, policy_key=item.policy, environment=item.environment,
-                      rule=item.rule, context=item.context, trace=item.trace)
+                      rule=item.rule, context=item.context, trace=item.trace, settings=settings)
 
     @app.post('/v2/decisions')
     def decision(body: DecisionInput, principal=Depends(machine), workspace=Depends(workspace), session=Depends(db, scope="function")):
@@ -400,4 +402,11 @@ def create_app(settings=None):
             raise HTTPException(413, 'Batch exceeds configured limit')
         return {'items': [execute(item, principal, workspace, session) for item in body.items]}
 
+    from .async_api import register
+    register(app, service, settings, etag, size)
+    from pathlib import Path
+    from fastapi.staticfiles import StaticFiles
+    static = Path(__file__).parent / 'static'
+    if static.is_dir():
+        app.mount('/admin', StaticFiles(directory=static, html=True), name='admin')
     return app

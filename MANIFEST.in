@@ -20,3 +20,8 @@ include .github/branch-protection.json
 include docs-v2-status.md
 
 include docs-auth-tenant.md
+
+recursive-include rulease/static *
+recursive-include frontend *.json *.html *.ts *.tsx *.css
+prune frontend/node_modules
+include docs-async-rollouts.md

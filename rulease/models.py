@@ -190,6 +190,7 @@ class SimulationJob(Base):
     id = pk()
     policy_id = Column(String(36), nullable=False)
     project_id = ref('projects.id')
+    request_hash = Column(String(64))
     baseline_id = ref('revisions.id')
     candidate_id = ref('revisions.id')
     status = Column(String(32), nullable=False, default='queued')
@@ -197,6 +198,7 @@ class SimulationJob(Base):
     created_at = created()
     __table_args__ = (
         ForeignKeyConstraint(['policy_id', 'project_id'], ['policies.id', 'policies.project_id']),
+        UniqueConstraint('id', 'project_id'),
         ForeignKeyConstraint(['baseline_id', 'policy_id'], ['revisions.id', 'revisions.policy_id']),
         ForeignKeyConstraint(['candidate_id', 'policy_id'], ['revisions.id', 'revisions.policy_id']))
 
@@ -293,6 +295,14 @@ class WebhookDelivery(Base):
 class Job(Base):
     __tablename__ = 'jobs'
     id = pk()
+    project_id = Column(String(36), ForeignKey('projects.id'))
+    simulation_id = Column(String(36))
+    rollout_id = Column(String(36))
+    dedup_key = Column(String(128), unique=True)
+    created_at = created()
+    __table_args__ = (
+        ForeignKeyConstraint(['simulation_id', 'project_id'], ['simulation_jobs.id', 'simulation_jobs.project_id']),
+        ForeignKeyConstraint(['rollout_id', 'project_id'], ['rollouts.id', 'rollouts.project_id']))
     kind = Column(String(64), nullable=False)
     payload = Column(JSON, nullable=False)
     state = Column(String(32), nullable=False, default='queued')
@@ -319,3 +329,6 @@ class LoginBucket(Base):
     key = Column(String(64), primary_key=True)
     count = Column(Integer, nullable=False)
     reset_at = Column(DateTime(timezone=True), nullable=False)
+
+# Register related tables for metadata consumers (including migration tests).
+from . import async_models  # noqa: E402,F401
