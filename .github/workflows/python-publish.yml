@@ -34,7 +34,7 @@ jobs:
           python -m venv /tmp/ruleas-release
           /tmp/ruleas-release/bin/pip install dist/*.whl
           cd /tmp
-          /tmp/ruleas-release/bin/ruleas test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
+          /tmp/ruleas-release/bin/rulease test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
           /tmp/ruleas-release/bin/python "$GITHUB_WORKSPACE/examples/run_example.py"
       - uses: actions/upload-artifact@v4
         with:
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/ruleas/
+      url: https://pypi.org/project/rulease/
     permissions:
       id-token: write
     steps:
