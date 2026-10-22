@@ -15,7 +15,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install "rulea @ git+https://github.com/tanuki276/rulea.git@b3dc2bfb31a945eddfe6b557ec29d8803de8ee78"
       - run: python -m pip install ".[test]"
       - name: Check release tag matches package version
         env:
@@ -33,7 +32,6 @@ jobs:
       - name: Install wheel in clean environment and run examples
         run: |
           python -m venv /tmp/ruleas-release
-          /tmp/ruleas-release/bin/pip install "rulea @ git+https://github.com/tanuki276/rulea.git@b3dc2bfb31a945eddfe6b557ec29d8803de8ee78"
           /tmp/ruleas-release/bin/pip install dist/*.whl
           cd /tmp
           /tmp/ruleas-release/bin/rulease test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
