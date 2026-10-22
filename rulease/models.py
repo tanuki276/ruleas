@@ -49,7 +49,7 @@ class Project(Base):
     workspace_id = ref('workspaces.id')
     key = Column(String(128), nullable=False)
     name = Column(String(256), nullable=False)
-    __table_args__ = (UniqueConstraint('workspace_id', 'key'),)
+    __table_args__ = (UniqueConstraint('workspace_id', 'key'), UniqueConstraint('id', 'workspace_id'))
 
 
 class Environment(Base):
@@ -139,7 +139,7 @@ class Release(Base):
     revision_id = Column(String(36), nullable=False)
     generation = Column(Integer, nullable=False)
     created_at = created()
-    __table_args__ = (UniqueConstraint('environment_id', 'policy_id', 'generation'),
+    __table_args__ = (UniqueConstraint('id', 'policy_id', 'revision_id'), UniqueConstraint('environment_id', 'policy_id', 'generation'),
         ForeignKeyConstraint(['revision_id', 'policy_id'], ['revisions.id', 'revisions.policy_id']))
 
 
@@ -149,6 +149,7 @@ class TestSuite(Base):
     policy_id = ref('policies.id')
     name = Column(String(256), nullable=False)
     version = Column(Integer, nullable=False, default=1)
+    __table_args__ = (UniqueConstraint('id', 'policy_id'),)
 
 
 class TestCase(Base):
@@ -164,10 +165,14 @@ class TestCase(Base):
 class TestRun(Base):
     __tablename__ = 'test_runs'
     id = pk()
+    policy_id = Column(String(36), nullable=False)
     suite_id = ref('test_suites.id')
     revision_id = ref('revisions.id')
     report = Column(JSON, nullable=False)
     created_at = created()
+    __table_args__ = (
+        ForeignKeyConstraint(['suite_id', 'policy_id'], ['test_suites.id', 'test_suites.policy_id']),
+        ForeignKeyConstraint(['revision_id', 'policy_id'], ['revisions.id', 'revisions.policy_id']))
 
 
 class ApprovalRequest(Base):
@@ -183,12 +188,17 @@ class ApprovalRequest(Base):
 class SimulationJob(Base):
     __tablename__ = 'simulation_jobs'
     id = pk()
+    policy_id = Column(String(36), nullable=False)
     project_id = ref('projects.id')
     baseline_id = ref('revisions.id')
     candidate_id = ref('revisions.id')
     status = Column(String(32), nullable=False, default='queued')
     report = Column(JSON)
     created_at = created()
+    __table_args__ = (
+        ForeignKeyConstraint(['policy_id', 'project_id'], ['policies.id', 'policies.project_id']),
+        ForeignKeyConstraint(['baseline_id', 'policy_id'], ['revisions.id', 'revisions.policy_id']),
+        ForeignKeyConstraint(['candidate_id', 'policy_id'], ['revisions.id', 'revisions.policy_id']))
 
 
 class ServiceAccount(Base):
@@ -197,7 +207,7 @@ class ServiceAccount(Base):
     workspace_id = ref('workspaces.id')
     name = Column(String(128), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
-    __table_args__ = (UniqueConstraint('workspace_id', 'name'),)
+    __table_args__ = (UniqueConstraint('workspace_id', 'name'), UniqueConstraint('id', 'workspace_id'))
 
 
 class APIKey(Base):
@@ -231,7 +241,13 @@ class DecisionEvent(Base):
     input_hash = Column(String(64), nullable=False)
     duration_us = Column(Integer, nullable=False)
     evaluated_at = Column(DateTime(timezone=True), nullable=False)
-    __table_args__ = {'postgresql_partition_by': 'RANGE (created_at)'}
+    __table_args__ = (
+        ForeignKeyConstraint(['project_id', 'workspace_id'], ['projects.id', 'projects.workspace_id']),
+        ForeignKeyConstraint(['policy_id', 'project_id'], ['policies.id', 'policies.project_id']),
+        ForeignKeyConstraint(['revision_id', 'policy_id'], ['revisions.id', 'revisions.policy_id']),
+        ForeignKeyConstraint(['release_id', 'policy_id', 'revision_id'], ['releases.id', 'releases.policy_id', 'releases.revision_id']),
+        ForeignKeyConstraint(['service_account_id', 'workspace_id'], ['service_accounts.id', 'service_accounts.workspace_id']),
+        {'postgresql_partition_by': 'RANGE (created_at)'})
 
 
 class AuditEvent(Base):

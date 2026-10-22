@@ -2,22 +2,23 @@
 import base64
 import json
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
-from sqlalchemy.dialects.postgresql import insert
 from .config import Settings
 from .database import connect
-from .models import (APIKey, AuthSession, Draft, Environment, Human, LoginBucket,
-                     Policy, Project, Release, Revision, ServiceAccount, TestSuite, TestCase, TestRun, Workspace, now)
-from .security import (authenticate_human, authenticate_key, hash_password, issue_key,
-                       issue_session, token_digest, verify_password)
+from .models import (Draft, Human, Policy, Revision, ServiceAccount, TestSuite,
+                     TestCase, TestRun, Workspace, now)
+from .security import (authenticate_human, authenticate_key, authorize_key, hash_password, issue_key,
+                       issue_session, verify_password, Unauthenticated, ACTIVITY_INTERVAL,
+                       touch_activity, rotate_session, logout_all_sessions)
+from .rate_limit import RateLimited, client_ip, consume_login_budget
 from .service import Conflict, Forbidden, PolicyService, decide, preview
 
 
@@ -138,12 +139,17 @@ def create_app(settings=None):
                             status_code=500, media_type='application/problem+json')
 
     async def problem(request, exc):
-        status = (412 if isinstance(exc, Conflict) else 403 if isinstance(exc, Forbidden) else
+        status = (401 if isinstance(exc, Unauthenticated) else 429 if isinstance(exc, RateLimited) else 412 if isinstance(exc, Conflict) else 403 if isinstance(exc, Forbidden) else
                   404 if isinstance(exc, LookupError) else exc.status_code if isinstance(exc, HTTPException) else 422)
+        headers = dict(exc.headers or {}) if isinstance(exc, HTTPException) else {}
+        if status == 401:
+            headers['WWW-Authenticate'] = 'Bearer realm="rulease"'
+        if isinstance(exc, RateLimited):
+            headers['Retry-After'] = str(exc.retry_after)
         return JSONResponse(dict(type='about:blank', title=str(exc.detail if isinstance(exc, HTTPException) else exc),
                                  status=status, request_id=getattr(request.state, 'request_id', None)),
-                            status_code=status, media_type='application/problem+json')
-    for error in (Conflict, Forbidden, LookupError, ValueError, HTTPException):
+                            status_code=status, media_type='application/problem+json', headers=headers)
+    for error in (Unauthenticated, RateLimited, Conflict, Forbidden, LookupError, ValueError, HTTPException):
         app.add_exception_handler(error, problem)
 
     def db():
@@ -151,9 +157,10 @@ def create_app(settings=None):
             yield session
 
     def bearer(authorization: str = Header(default='')):
-        if not authorization.startswith('Bearer '):
-            raise HTTPException(401, 'Bearer credential required')
-        return authorization[7:]
+        parts = authorization.split()
+        if len(parts) != 2 or parts[0].lower() != 'bearer':
+            raise Unauthenticated('Bearer credential required')
+        return parts[1]
 
     def workspace(x_rulease_workspace: str = Header(), session=Depends(db)):
         found = session.scalar(select(Workspace).where(Workspace.key == x_rulease_workspace))
@@ -161,10 +168,21 @@ def create_app(settings=None):
             raise HTTPException(404, 'Workspace not found')
         return found
 
-    def human(token=Depends(bearer), session=Depends(db)):
-        return authenticate_human(session, token)
+    def schedule_activity(background, kind, record):
+        if record.last_used_at is None or record.last_used_at <= now() - ACTIVITY_INTERVAL:
+            background.add_task(touch_activity, sessions, kind, record.id)
 
-    def service(workspace=Depends(workspace), human=Depends(human), session=Depends(db)):
+    def human(background: BackgroundTasks, token=Depends(bearer), session=Depends(db)):
+        record = authenticate_human(session, token)
+        schedule_activity(background, 'session', record)
+        return record
+
+    def machine(background: BackgroundTasks, token=Depends(bearer), session=Depends(db)):
+        record, account = authenticate_key(session, token)
+        schedule_activity(background, 'key', record)
+        return record, account
+
+    def service(human=Depends(human), workspace=Depends(workspace), session=Depends(db)):
         return PolicyService(session, workspace.id, human.human_id)
 
     def size(value, maximum):
@@ -189,21 +207,8 @@ def create_app(settings=None):
             raise HTTPException(503, 'Database is unavailable or migration is missing')
 
     @app.post('/v2/auth/login')
-    def login(body: Login):
-        # Persist attempts independently of successful authentication transactions.
-        with sessions.begin() as session:
-            key = token_digest(body.username)
-            stmt = insert(LoginBucket).values(key=key, count=1, reset_at=now() + timedelta(minutes=15))
-            bucket = session.execute(stmt.on_conflict_do_update(index_elements=[LoginBucket.key],
-                set_={'count': LoginBucket.count + 1}).returning(LoginBucket.count, LoginBucket.reset_at)).one()
-            if bucket[1] < now():
-                session.execute(LoginBucket.__table__.update().where(LoginBucket.key == key).values(
-                    count=1, reset_at=now() + timedelta(minutes=15)))
-                count = 1
-            else:
-                count = bucket[0]
-        if count > 10:
-            raise HTTPException(429, 'Too many login attempts')
+    def login(body: Login, request: Request):
+        consume_login_budget(sessions, settings, client_ip(request, settings.trusted_proxies), body.username)
         with sessions.begin() as session:
             user = session.scalar(select(Human).where(Human.username == body.username))
             # A fixed dummy hash avoids skipping the expensive verification on unknown users.
@@ -220,12 +225,11 @@ def create_app(settings=None):
 
     @app.post('/v2/auth/rotate')
     def rotate(human=Depends(human), session=Depends(db)):
-        human.revoked_at = now()
-        return {'session_token': issue_session(session, human.human_id, expires_at=human.expires_at), 'token_type': 'Bearer'}
+        return {'session_token': rotate_session(session, human), 'token_type': 'Bearer'}
 
     @app.post('/v2/auth/logout-all', status_code=204)
     def logout_all(human=Depends(human), session=Depends(db)):
-        session.execute(AuthSession.__table__.update().where(AuthSession.human_id == human.human_id).values(revoked_at=now()))
+        logout_all_sessions(session, human)
         return Response(status_code=204)
 
     @app.get('/v2/projects/{project}/policies')
@@ -327,7 +331,7 @@ def create_app(settings=None):
         for index, case in enumerate(body.cases):
             svc.session.add(TestCase(suite_id=suite.id, name=case.get('name', str(index + 1)),
                 rule=case['rule'], context=case['context'], expect=case.get('expect', {'result': case.get('result')})))
-        svc.session.add(TestRun(suite_id=suite.id, revision_id=revision.id, report=report))
+        svc.session.add(TestRun(suite_id=suite.id, policy_id=revision.policy_id, revision_id=revision.id, report=report))
         return report
 
     @app.get('/v2/projects/{project}/policies/{policy}/revisions/{number}/diff')
@@ -371,10 +375,11 @@ def create_app(settings=None):
             permissions=body.permissions, scope=body.scope, expires_at=body.expires_at)
         return {'key': value, 'prefix': record.prefix, 'expires_at': record.expires_at}
 
-    def execute(item, token, workspace, session):
+    def execute(item, principal, workspace, session):
         size(item.context, settings.max_context_bytes)
-        record, account = authenticate_key(session, token, permission='decision:execute',
-            resource={'project': item.project, 'policy': item.policy, 'environment': item.environment})
+        record, account = principal
+        authorize_key(record, 'decision:execute',
+            {'project': item.project, 'policy': item.policy, 'environment': item.environment})
         if account.workspace_id != workspace.id:
             raise Forbidden('Workspace does not match credential')
         return decide(session, workspace_id=workspace.id, service_account_id=account.id,
@@ -382,13 +387,13 @@ def create_app(settings=None):
                       rule=item.rule, context=item.context, trace=item.trace)
 
     @app.post('/v2/decisions')
-    def decision(body: DecisionInput, token=Depends(bearer), workspace=Depends(workspace), session=Depends(db)):
-        return execute(body, token, workspace, session)
+    def decision(body: DecisionInput, principal=Depends(machine), workspace=Depends(workspace), session=Depends(db)):
+        return execute(body, principal, workspace, session)
 
     @app.post('/v2/decisions/batch')
-    def batch(body: BatchInput, token=Depends(bearer), workspace=Depends(workspace), session=Depends(db)):
+    def batch(body: BatchInput, principal=Depends(machine), workspace=Depends(workspace), session=Depends(db)):
         if len(body.items) > settings.max_batch_size:
             raise HTTPException(413, 'Batch exceeds configured limit')
-        return {'items': [execute(item, token, workspace, session) for item in body.items]}
+        return {'items': [execute(item, principal, workspace, session) for item in body.items]}
 
     return app

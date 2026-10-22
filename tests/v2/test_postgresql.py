@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(not URL, reason='RULEASE_TEST_DATABASE_URL requi
 
 
 @pytest.fixture
-def database():
+def database(request):
     url = make_url(URL).set(drivername='postgresql+psycopg')
     admin = create_engine(url)
     name = 'v2_test_' + uuid4().hex
@@ -30,8 +30,18 @@ def database():
         connection.exec_driver_sql('CREATE SCHEMA ' + name)
     engine = create_engine(url, connect_args={'options': '-csearch_path=' + name})
     try:
-        migrate(engine)
-        migrate(engine)  # Ordered migration must be repeatable without touching history.
+        if getattr(request, 'param', None) == 'initial':
+            import hashlib
+            from importlib.resources import files
+            sql = files('rulease').joinpath('migrations/0001.sql').read_text()
+            with engine.begin() as connection:
+                connection.exec_driver_sql('CREATE TABLE rulease_migrations (version text PRIMARY KEY, checksum text NOT NULL)')
+                connection.exec_driver_sql(sql, execution_options={'no_parameters': True})
+                connection.execute(text('INSERT INTO rulease_migrations VALUES (:version, :checksum)'),
+                    {'version': '0001.sql', 'checksum': hashlib.sha256(sql.encode()).hexdigest()})
+        else:
+            migrate(engine)
+            migrate(engine)  # Ordered migration must be repeatable without touching history.
         yield engine, sessionmaker(engine, expire_on_commit=False)
     finally:
         engine.dispose()
@@ -150,7 +160,7 @@ def test_http_auth_draft_preview_release_and_scoped_batch(database, monkeypatch)
         assert batch.status_code == 200, batch.text
         assert len({i['decision_id'] for i in batch.json()['items']}) == 2
         assert client.post('/v2/decisions', headers=machine, json={**item, 'environment': 'staging'}).status_code == 403
-        assert client.get(path, headers=machine).status_code == 403
-        assert client.post('/v2/decisions', headers=headers, json=item).status_code == 403
+        assert client.get(path, headers=machine).status_code == 401
+        assert client.post('/v2/decisions', headers=headers, json=item).status_code == 401
         assert client.post('/v2/auth/logout-all', headers=headers).status_code == 204
-        assert client.get(path, headers=headers).status_code == 403
+        assert client.get(path, headers=headers).status_code == 401

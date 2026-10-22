@@ -39,11 +39,17 @@ jobs, but their presence is not a claim that their services or UI are implemente
 maintenance and retention are still pending. `activate_at` rejects early manual
 release, but there is no scheduler/automatic activation yet.
 
+## Security prerequisites
+
+Credential/session row contention, shared IP login limits, 401/403 semantics and
+relational tenant integrity are covered by [authentication/tenant hardening](docs-auth-tenant.md).
+Next implementation order: worker → simulation/replay → shadow → canary → UI.
+
 ## Remaining stages
 
 | Stage | Remaining work |
 |---|---|
-| A–C | Operational schema review, full tenant integrity constraints, identity/project administration |
+| A–C | Operational schema review and identity/project administration |
 | D | Suite management APIs/UI, richer abstract interpretation, schema autocomplete |
 | E | Approval rejection/admin APIs, idempotent release API, production policy gates |
 | F | Historical replay workers, filtering, persisted source/semantic/behavioral comparisons |
