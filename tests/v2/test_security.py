@@ -55,3 +55,33 @@ def test_machine_authentication_precedes_workspace_lookup(authorization):
             assert 'www-authenticate' in result.headers
     finally:
         app.state.engine.dispose()
+
+
+@pytest.mark.parametrize('zone', ['eth0', 'eth1', '123'])
+def test_ipv6_zone_cannot_create_independent_ip_budgets(zone):
+    assert client_ip(request('2001:db8::1%' + zone), []) == '2001:db8::1'
+    assert client_ip(request('10.0.0.1', '2001:db8::1%' + zone), ['10.0.0.0/8']) == '2001:db8::1'
+
+
+@pytest.mark.parametrize('method,path,body,status', [
+    ('GET', '/missing', None, 404),
+    ('POST', '/health/live', None, 405),
+    ('POST', '/v2/auth/login', 'x' * 101, 413),
+])
+def test_error_contract_and_security_headers(method, path, body, status):
+    app = create_app(Settings(database_url='postgresql://localhost/test', secret_key='x'*32,
+        max_body_bytes=100, production=True, public_url='https://example.com'))
+    try:
+        with TestClient(app) as client:
+            result = client.request(method, path, content=body)
+            assert result.status_code == status
+            assert result.headers['content-type'].startswith('application/problem+json')
+            assert result.json()['request_id'] == result.headers['x-request-id']
+            assert result.headers['cache-control'] == 'no-store'
+            assert result.headers['x-content-type-options'] == 'nosniff'
+            assert 'frame-ancestors' in result.headers['content-security-policy']
+            assert 'strict-transport-security' in result.headers
+            if status == 405:
+                assert 'GET' in result.headers['allow']
+    finally:
+        app.state.engine.dispose()

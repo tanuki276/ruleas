@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, BackgroundTasks
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, ConfigDict, Field
@@ -103,6 +104,14 @@ def create_app(settings=None):
     app = FastAPI(title='Rulease', version='2.0.0-alpha.1', description='Immutable policy revision and release API')
     app.state.engine, app.state.sessions = engine, sessions
 
+    def secure_headers(response, request_id):
+        response.headers.update({'X-Request-ID': request_id, 'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+            'Cache-Control': 'no-store'})
+        if settings.production:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        return response
+
     @app.middleware('http')
     async def security(request, call_next):
         request_id = uuid4().hex
@@ -111,16 +120,11 @@ def create_app(settings=None):
         async for chunk in request.stream():
             data.extend(chunk)
             if len(data) > settings.max_body_bytes:
-                return JSONResponse(dict(type='about:blank', title='Request too large', status=413, request_id=request_id),
-                                    status_code=413, media_type='application/problem+json', headers={'X-Request-ID': request_id})
+                return secure_headers(JSONResponse(dict(type='about:blank', title='Request too large', status=413, request_id=request_id),
+                                    status_code=413, media_type='application/problem+json', headers={'X-Request-ID': request_id}), request_id)
         request._body = bytes(data)
         response = await call_next(request)
-        response.headers.update({'X-Request-ID': request_id, 'X-Content-Type-Options': 'nosniff',
-            'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
-            'Cache-Control': 'no-store'})
-        if settings.production:
-            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-        return response
+        return secure_headers(response, request_id)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
@@ -134,22 +138,22 @@ def create_app(settings=None):
 
     @app.exception_handler(Exception)
     async def unexpected(request, exc):
-        return JSONResponse(dict(type='about:blank', title='Internal server error', status=500,
+        return secure_headers(JSONResponse(dict(type='about:blank', title='Internal server error', status=500,
                                  request_id=getattr(request.state, 'request_id', None)),
-                            status_code=500, media_type='application/problem+json')
+                            status_code=500, media_type='application/problem+json'), request.state.request_id)
 
     async def problem(request, exc):
         status = (401 if isinstance(exc, Unauthenticated) else 429 if isinstance(exc, RateLimited) else 412 if isinstance(exc, Conflict) else 403 if isinstance(exc, Forbidden) else
-                  404 if isinstance(exc, LookupError) else exc.status_code if isinstance(exc, HTTPException) else 422)
-        headers = dict(exc.headers or {}) if isinstance(exc, HTTPException) else {}
+                  404 if isinstance(exc, LookupError) else exc.status_code if isinstance(exc, StarletteHTTPException) else 422)
+        headers = dict(exc.headers or {}) if isinstance(exc, StarletteHTTPException) else {}
         if status == 401:
             headers['WWW-Authenticate'] = 'Bearer realm="rulease"'
         if isinstance(exc, RateLimited):
             headers['Retry-After'] = str(exc.retry_after)
-        return JSONResponse(dict(type='about:blank', title=str(exc.detail if isinstance(exc, HTTPException) else exc),
+        return JSONResponse(dict(type='about:blank', title=str(exc.detail if isinstance(exc, StarletteHTTPException) else exc),
                                  status=status, request_id=getattr(request.state, 'request_id', None)),
                             status_code=status, media_type='application/problem+json', headers=headers)
-    for error in (Unauthenticated, RateLimited, Conflict, Forbidden, LookupError, ValueError, HTTPException):
+    for error in (Unauthenticated, RateLimited, Conflict, Forbidden, LookupError, ValueError, StarletteHTTPException):
         app.add_exception_handler(error, problem)
 
     def db():

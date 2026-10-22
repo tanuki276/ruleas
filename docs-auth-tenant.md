@@ -95,3 +95,10 @@ They also exercise upgrade/backfill, upgrade failure rollback, credential row
 locks, rotation/logout races, distributed login budgets and 401/403 responses.
 Audit actor/resource strings and unimplemented job payloads are not relational
 resource identifiers; tenant-aware job contracts remain required in worker work.
+
+Additional edge-case hardening:
+
+- Delayed activity tasks cannot refresh sessions whose idle timeout has already elapsed.
+- IPv6 zone identifiers are stripped before building IP budgets, including forwarded addresses.
+- Router-generated 404/405 errors use the same problem JSON contract; 405 retains `Allow`.
+- Oversized-body and unexpected-error responses carry request IDs and security headers too.

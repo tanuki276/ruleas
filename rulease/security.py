@@ -100,7 +100,10 @@ def touch_activity(sessions, kind, identifier):
     try:
         with sessions.begin() as session:
             session.connection().exec_driver_sql("SET LOCAL statement_timeout = '100ms'")
-            row = session.scalar(select(model).where(model.id == identifier,
+            conditions = []
+            if kind == 'session':
+                conditions.append(model.last_used_at > current - SESSION_IDLE_TIMEOUT)
+            row = session.scalar(select(model).where(*conditions, model.id == identifier,
                 model.revoked_at.is_(None), model.expires_at > current,
                 or_(model.last_used_at.is_(None), model.last_used_at <= current - ACTIVITY_INTERVAL))
                 .with_for_update(skip_locked=True))

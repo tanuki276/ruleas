@@ -276,3 +276,16 @@ def test_valid_credentials_cannot_cross_workspaces(database, monkeypatch):
         response = client.post('/v2/decisions', json={'project':'commerce','policy':'checkout','rule':'discount','context':{}},
             headers={'Authorization':'Bearer '+c['key_token'],'X-Rulease-Workspace':'other'})
         assert response.status_code == 403
+
+
+def test_delayed_activity_cannot_revive_idle_expired_session(database):
+    engine, sessions = database
+    c = credentials(sessions)
+    old = now() - timedelta(minutes=31)
+    with engine.begin() as connection:
+        connection.execute(update(AuthSession).values(last_used_at=old))
+    touch_activity(sessions, 'session', c['session'])
+    with sessions() as session:
+        assert session.get(AuthSession, c['session']).last_used_at == old
+        with pytest.raises(Unauthenticated):
+            authenticate_human(session, c['session_token'])

@@ -18,7 +18,8 @@ class RateLimited(ValueError):
 
 def client_ip(request, trusted_proxies):
     def address(value):
-        parsed = ip_address(value)
+        # Zone identifiers are local interface metadata, not client identity.
+        parsed = ip_address(value.split('%', 1)[0])
         return parsed.ipv4_mapped if getattr(parsed, 'ipv4_mapped', None) else parsed
     try:
         peer = address(request.client.host)
