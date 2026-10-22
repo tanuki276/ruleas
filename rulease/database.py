@@ -23,7 +23,7 @@ def migrate(engine):
         if tables and 'rulease_migrations' not in tables:
             raise ValueError('Database is not a managed v2 database; v1 migration requires a separate import')
         connection.execute(text('CREATE TABLE IF NOT EXISTS rulease_migrations (version text PRIMARY KEY, checksum text NOT NULL)'))
-        applied = dict(connection.execute(text('SELECT version, checksum FROM rulease_migrations')).tuples())
+        applied = {row[0]: row[1] for row in connection.execute(text('SELECT version, checksum FROM rulease_migrations'))}
         for resource in sorted(files('rulease').joinpath('migrations').iterdir(), key=lambda p: p.name):
             if not resource.name.endswith('.sql'):
                 continue
