@@ -11,7 +11,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install "rulea @ git+https://github.com/tanuki276/rulea.git@b3dc2bfb31a945eddfe6b557ec29d8803de8ee78"
       - run: python -m pip install ".[test]"
       - run: python -m pytest -q
       - run: rulease validate examples/documents.rulea
@@ -30,7 +29,6 @@ jobs:
         run: |
           for distribution in "$GITHUB_WORKSPACE"/dist/*; do
             python -m venv --clear /tmp/ruleas-check
-            /tmp/ruleas-check/bin/pip install "rulea @ git+https://github.com/tanuki276/rulea.git@b3dc2bfb31a945eddfe6b557ec29d8803de8ee78"
             /tmp/ruleas-check/bin/pip install "$distribution"
             cd /tmp
             /tmp/ruleas-check/bin/rulease test "$GITHUB_WORKSPACE/examples/documents.rulea" "$GITHUB_WORKSPACE/examples/documents.cases.json"
@@ -59,7 +57,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install "rulea @ git+https://github.com/tanuki276/rulea.git@b3dc2bfb31a945eddfe6b557ec29d8803de8ee78"
       - run: pip install '.[test]'
       - run: pytest -q tests/test_postgres.py tests/v2
 
