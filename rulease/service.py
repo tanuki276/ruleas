@@ -230,7 +230,7 @@ class PolicyService:
 
 
 def decide(session, *, workspace_id, service_account_id, project_key, policy_key, environment,
-           rule, context, trace='none'):
+           rule, context, trace='none', settings=None):
     if trace not in ('none', 'summary', 'full'):
         raise ValueError('Invalid trace mode')
     project = session.scalar(select(Project).where(Project.workspace_id == workspace_id, Project.key == project_key))
@@ -244,6 +244,9 @@ def decide(session, *, workspace_id, service_account_id, project_key, policy_key
                              .order_by(Release.generation.desc()).limit(1))
     if release is None:
         raise LookupError('Policy has not been released')
+    from .rollouts import current_rollout, route
+    rollout = current_rollout(session, env.id, policy.id, release)
+    release = route(session, release, rollout, context)
     revision = session.get(Revision, release.revision_id)
     errors = validate_context(revision.context_schema, context)
     if errors:
@@ -257,6 +260,11 @@ def decide(session, *, workspace_id, service_account_id, project_key, policy_key
         workspace_id=workspace_id, project_id=project.id, policy_id=policy.id, revision_id=revision.id,
         release_id=release.id, service_account_id=service_account_id, rule=rule,
         result=result['result'], reason=result['reason'], input_hash=digest(context), duration_us=duration))
+    if settings is not None and rollout and rollout.mode == 'shadow' and rollout.state == 'active':
+        from .worker import enqueue
+        enqueue(session, settings, project_id=project.id, kind='shadow', rollout_id=rollout.id,
+            dedup_key=decision_id, data=dict(candidate_id=rollout.candidate_revision_id, rule=rule, context=context,
+                decision_id=decision_id, primary_result=result['result']))
     return dict(result, decision_id=decision_id, policy=policy_key, environment=environment,
                 revision=revision.number, revision_hash=revision.revision_hash,
                 release_id=release.id, duration_us=duration, evaluated_at=evaluated_at.isoformat())

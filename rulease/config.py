@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     login_ip_limit: int = Field(default=60, ge=1, le=10000)
     login_username_limit: int = Field(default=10, ge=1, le=1000)
     login_window_seconds: int = Field(default=900, ge=1, le=86400)
+    worker_lease_seconds: int = Field(default=120, ge=10, le=3600)
+    worker_poll_seconds: float = Field(default=1, ge=0.1, le=60)
     retention_days: int = Field(default=30, ge=1)
 
     @model_validator(mode='after')
