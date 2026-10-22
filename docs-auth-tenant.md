@@ -72,6 +72,8 @@ Migration `0002_auth_tenant_integrity.sql` is additive; it never rewrites the
 checksummed initial migration. It validates existing history transactionally:
 an inconsistent legacy v2 link aborts the entire upgrade for explicit repair.
 
+- HTTP transaction dependencies commit before response headers are sent; a database
+  integrity rejection returns 409 and rolls back, rather than returning a false 200.
 - Decision events bind project↔workspace, policy↔project, revision↔policy,
   release↔policy/revision and service account↔workspace through composite FKs.
 - Test runs bind suite and revision to one policy. Simulations bind baseline and

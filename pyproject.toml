@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "rulease"
 version = "2.0.0a1"
 description = "Ruleas: authenticated policy API and management server"
-dependencies = ["rulea>=2.1.0a1,<3", "pydantic-settings>=2.7,<3", "argon2-cffi>=23.1,<26", "fastapi>=0.115,<1", "pydantic>=2.7,<3", "alembic>=1.13,<2", "uvicorn>=0.30,<1", "sqlalchemy>=2.0,<3", "psycopg[binary]>=3.2,<4", "itsdangerous>=2.2,<3"]
+dependencies = ["rulea>=2.1.0a1,<3", "pydantic-settings>=2.7,<3", "argon2-cffi>=23.1,<26", "fastapi>=0.121.1,<1", "pydantic>=2.7,<3", "alembic>=1.13,<2", "uvicorn>=0.30,<1", "sqlalchemy>=2.0,<3", "psycopg[binary]>=3.2,<4", "itsdangerous>=2.2,<3"]
 authors = [
   { name="tanuki276" }
 ]

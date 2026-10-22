@@ -228,3 +228,51 @@ def test_authenticated_but_unauthorized_is_403(database, monkeypatch):
         response = client.post('/v2/decisions', json={'project':'commerce','policy':'checkout','rule':'discount','context':{}},
             headers={'Authorization':'Bearer '+c['key_token'],'X-Rulease-Workspace':'team'})
         assert response.status_code == 403 and 'www-authenticate' not in response.headers
+
+
+def test_commit_time_tenant_violation_is_409_before_response_and_rolls_back(database, monkeypatch):
+    import rulease.server as server
+    from rulease.models import DecisionEvent, Workspace
+    _, sessions = database
+    c = credentials(sessions)
+    with sessions.begin() as session:
+        other = Workspace(key='other', name='Other')
+        session.add(other)
+        svc = PolicyService(session, c['workspace'], c['human'])
+        session.scalar(select(Environment)).required_approvals = 0
+        svc.create_policy('commerce','checkout','Checkout',SOURCE)
+        svc.commit('commerce','checkout',1)
+        d = svc.create_deployment('commerce','production',{'checkout':1},1)
+        svc.release(d.id)
+        session.flush()
+        other_id = other.id
+    real_decide = server.decide
+    def corrupt_event(session, **kwargs):
+        result = real_decide(session, **kwargs)
+        next(row for row in session.new if isinstance(row, DecisionEvent)).workspace_id = other_id
+        return result
+    monkeypatch.setattr(server, 'decide', corrupt_event)
+    app = app_for(database, monkeypatch)
+    with TestClient(app) as client:
+        response = client.post('/v2/decisions', json={'project':'commerce','policy':'checkout','rule':'discount','context':{'amount':9000}},
+            headers={'Authorization':'Bearer '+c['key_token'],'X-Rulease-Workspace':'team'})
+        assert response.status_code == 409, response.text
+        assert response.headers['content-type'].startswith('application/problem+json')
+    with sessions() as session:
+        assert not session.scalars(select(DecisionEvent)).all()
+
+
+def test_valid_credentials_cannot_cross_workspaces(database, monkeypatch):
+    from rulease.models import Workspace
+    _, sessions = database
+    c = credentials(sessions)
+    with sessions.begin() as session:
+        session.add(Workspace(key='other', name='Other'))
+    app = app_for(database, monkeypatch)
+    with TestClient(app) as client:
+        response = client.get('/v2/projects/commerce/policies',
+            headers={'Authorization':'Bearer '+c['session_token'],'X-Rulease-Workspace':'other'})
+        assert response.status_code == 403
+        response = client.post('/v2/decisions', json={'project':'commerce','policy':'checkout','rule':'discount','context':{}},
+            headers={'Authorization':'Bearer '+c['key_token'],'X-Rulease-Workspace':'other'})
+        assert response.status_code == 403

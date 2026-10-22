@@ -162,7 +162,7 @@ def create_app(settings=None):
             raise Unauthenticated('Bearer credential required')
         return parts[1]
 
-    def workspace(x_rulease_workspace: str = Header(), session=Depends(db)):
+    def workspace(x_rulease_workspace: str = Header(), session=Depends(db, scope="function")):
         found = session.scalar(select(Workspace).where(Workspace.key == x_rulease_workspace))
         if found is None:
             raise HTTPException(404, 'Workspace not found')
@@ -172,17 +172,17 @@ def create_app(settings=None):
         if record.last_used_at is None or record.last_used_at <= now() - ACTIVITY_INTERVAL:
             background.add_task(touch_activity, sessions, kind, record.id)
 
-    def human(background: BackgroundTasks, token=Depends(bearer), session=Depends(db)):
+    def human(background: BackgroundTasks, token=Depends(bearer), session=Depends(db, scope="function")):
         record = authenticate_human(session, token)
         schedule_activity(background, 'session', record)
         return record
 
-    def machine(background: BackgroundTasks, token=Depends(bearer), session=Depends(db)):
+    def machine(background: BackgroundTasks, token=Depends(bearer), session=Depends(db, scope="function")):
         record, account = authenticate_key(session, token)
         schedule_activity(background, 'key', record)
         return record, account
 
-    def service(human=Depends(human), workspace=Depends(workspace), session=Depends(db)):
+    def service(human=Depends(human), workspace=Depends(workspace), session=Depends(db, scope="function")):
         return PolicyService(session, workspace.id, human.human_id)
 
     def size(value, maximum):
@@ -224,11 +224,11 @@ def create_app(settings=None):
     app.state.dummy_hash = hash_password(secrets.token_urlsafe(32))
 
     @app.post('/v2/auth/rotate')
-    def rotate(human=Depends(human), session=Depends(db)):
+    def rotate(human=Depends(human), session=Depends(db, scope="function")):
         return {'session_token': rotate_session(session, human), 'token_type': 'Bearer'}
 
     @app.post('/v2/auth/logout-all', status_code=204)
-    def logout_all(human=Depends(human), session=Depends(db)):
+    def logout_all(human=Depends(human), session=Depends(db, scope="function")):
         logout_all_sessions(session, human)
         return Response(status_code=204)
 
@@ -387,11 +387,11 @@ def create_app(settings=None):
                       rule=item.rule, context=item.context, trace=item.trace)
 
     @app.post('/v2/decisions')
-    def decision(body: DecisionInput, principal=Depends(machine), workspace=Depends(workspace), session=Depends(db)):
+    def decision(body: DecisionInput, principal=Depends(machine), workspace=Depends(workspace), session=Depends(db, scope="function")):
         return execute(body, principal, workspace, session)
 
     @app.post('/v2/decisions/batch')
-    def batch(body: BatchInput, principal=Depends(machine), workspace=Depends(workspace), session=Depends(db)):
+    def batch(body: BatchInput, principal=Depends(machine), workspace=Depends(workspace), session=Depends(db, scope="function")):
         if len(body.items) > settings.max_batch_size:
             raise HTTPException(413, 'Batch exceeds configured limit')
         return {'items': [execute(item, principal, workspace, session) for item in body.items]}
