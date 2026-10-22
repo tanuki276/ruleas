@@ -33,6 +33,6 @@ def migrate(engine):
                 if applied[resource.name] != checksum:
                     raise ValueError('Applied migration checksum mismatch: ' + resource.name)
                 continue
-            connection.exec_driver_sql(sql)
+            connection.exec_driver_sql(sql, execution_options={'no_parameters': True})
             connection.execute(text('INSERT INTO rulease_migrations VALUES (:version, :checksum)'),
                                dict(version=resource.name, checksum=checksum))
