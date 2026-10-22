@@ -92,6 +92,7 @@ ALTER TABLE jobs ADD CONSTRAINT jobs_typed_payload CHECK (
  ((kind='replay' AND simulation_id IS NOT NULL AND rollout_id IS NULL) OR
   (kind='shadow' AND rollout_id IS NOT NULL AND simulation_id IS NULL))));
 ALTER TABLE jobs ADD CONSTRAINT jobs_state CHECK(state IN ('queued','running','completed','failed'));
+DROP INDEX IF EXISTS jobs_claim;
 CREATE INDEX jobs_claim ON jobs(state,available_at,locked_until);
 CREATE INDEX simulation_results_filter ON simulation_results(simulation_id,changed,position);
 CREATE INDEX shadow_results_rollout ON shadow_results(rollout_id,created_at);
